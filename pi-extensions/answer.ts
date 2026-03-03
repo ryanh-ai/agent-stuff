@@ -67,11 +67,11 @@ Example output:
   ]
 }`;
 
-const CODEX_MODEL_ID = "gpt-5.1-codex-mini";
-const HAIKU_MODEL_ID = "claude-haiku-4-5";
+const HAIKU_MODEL_ID = "global.anthropic.claude-haiku-4-5-v1";
+const HAIKU_PROVIDER = "amazon-bedrock";
 
 /**
- * Prefer Codex mini for extraction when available, otherwise fallback to haiku or the current model.
+ * Use Bedrock Haiku for extraction, falling back to the current model if unavailable.
  */
 async function selectExtractionModel(
 	currentModel: Model<Api>,
@@ -80,15 +80,7 @@ async function selectExtractionModel(
 		getApiKey: (model: Model<Api>) => Promise<string | undefined>;
 	},
 ): Promise<Model<Api>> {
-	const codexModel = modelRegistry.find("openai-codex", CODEX_MODEL_ID);
-	if (codexModel) {
-		const apiKey = await modelRegistry.getApiKey(codexModel);
-		if (apiKey) {
-			return codexModel;
-		}
-	}
-
-	const haikuModel = modelRegistry.find("anthropic", HAIKU_MODEL_ID);
+	const haikuModel = modelRegistry.find(HAIKU_PROVIDER, HAIKU_MODEL_ID);
 	if (!haikuModel) {
 		return currentModel;
 	}

@@ -635,7 +635,7 @@ const showActionSelector = async (
 	options: { canQuickLook: boolean; canEdit: boolean; canDiff: boolean },
 ): Promise<"reveal" | "quicklook" | "open" | "edit" | "addToPrompt" | "diff" | null> => {
 	const actions: SelectItem[] = [
-		...(options.canDiff ? [{ value: "diff", label: "Diff in VS Code" }] : []),
+		...(options.canDiff ? [{ value: "diff", label: "Diff" }] : []),
 		{ value: "reveal", label: "Reveal in Finder" },
 		{ value: "open", label: "Open" },
 		{ value: "addToPrompt", label: "Add to prompt" },
@@ -824,11 +824,33 @@ const openDiff = async (pi: ExtensionAPI, ctx: ExtensionContext, target: FileEnt
 		writeFileSync(workingPath, "", "utf8");
 	}
 
-	const openResult = await pi.exec("code", ["--diff", tmpFile, workingPath], { cwd: gitRoot });
-	if (openResult.code !== 0) {
-		const errorMessage = openResult.stderr?.trim() || `Failed to open diff for ${target.displayPath}`;
-		ctx.ui.notify(errorMessage, "error");
-	}
+	// Use ctx.ui.custom to get TUI access for stdio: "inherit"
+	await ctx.ui.custom<void>((tui, theme, _kb, done) => {
+		tui.stop();
+		try {
+			const diffCmd = process.env.PI_DIFF_CMD;
+			let result;
+			if (diffCmd) {
+				const [cmd, ...args] = diffCmd.split(" ");
+				result = spawnSync(cmd!, [...args, tmpFile, workingPath], { stdio: "inherit", cwd: gitRoot });
+			} else {
+				// Try tuicr first
+				result = spawnSync("tuicr", [tmpFile, workingPath], { stdio: "inherit", cwd: gitRoot });
+				if (result.status !== 0) {
+					// Fallback to nvim -d
+					result = spawnSync("nvim", ["-d", tmpFile, workingPath], { stdio: "inherit", cwd: gitRoot });
+				}
+			}
+			if (result.status !== 0) {
+				ctx.ui.notify(`Failed to open diff for ${target.displayPath}`, "error");
+			}
+		} finally {
+			tui.start();
+			tui.requestRender(true);
+			done();
+		}
+		return new Text("");
+	});
 };
 
 const addFileToPrompt = (ctx: ExtensionContext, target: FileEntry): void => {
